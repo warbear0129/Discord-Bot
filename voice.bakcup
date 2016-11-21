@@ -20,13 +20,13 @@ const (
 )
 
 type musicPlayer struct {
-	voice		*discordgo.VoiceConnection
-	session		*discordgo.Session
+	sessions	map[string]*discordgo.Session
         encoder         *opus.Encoder
         queue           *lane.Queue
 	pcmChannel	chan []int16
         playing         bool
         skip            bool
+        stop            bool
 }
 
 var (
@@ -35,6 +35,7 @@ var (
 	sendpcm		bool
 	recv		chan *discordgo.Packet
 	mu		sync.Mutex
+	players	= make(map[string]*musicPlayer)
 )
 
 
@@ -65,7 +66,7 @@ func (mp *musicPlayer) play(url string) {
 	mp.voice.Speaking(true)
 	defer mp.voice.Speaking(false)
 
-	for {
+	for  {
 		err = binary.Read(ffmpegStdout, binary.LittleEndian, &audioBuffer)
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
@@ -81,19 +82,22 @@ func (mp *musicPlayer) play(url string) {
 		}
 		mp.pcmChannel <- audioBuffer
 	}
+
+	mp.playing = false
 }
 
 func (mp *musicPlayer) run() {
 	for mp.playing {
+		log.Println(mp.playing)
 		mp.skip = false
+
 		url := mp.queue.Dequeue()
 		if url == nil {
 			break
 		}
-		mp.session.ChannelMessageSend(mp.voice.GuildID, fmt.Sprintf("Now playing - **%s**", getYoutubeTitle(url)))
+
 		mp.play(url.(string))
 	}
-
 	log.Println("***** No more songs in queue, closing pcm channel *****")
 	close(mp.pcmChannel)
 	mp.voice.Close()
@@ -102,50 +106,53 @@ func (mp *musicPlayer) run() {
 	log.Println("***** Music Player cleanup finished *****")
 }
 
-func newMusicSession(target string, sID string, s *discordgo.Session) (mp *musicPlayer) {
-        enc, err := opus.NewEncoder(sampleRate, channels, opus.APPLICATION_VOIP)
+func (mp *musicPlayer) newSession(serverID string, s *discordgo.Session, target string) {
+	if mp.Sessions[serverID] == nil {
+		log.Printf("**** Finding channel : %s ... ***", target)
+		channels, _ := s.GuildChannels(serverID)
+		channelID := channels[1].ID
+
+		for _, channel := range channels {
+			if channel.Name == target {
+				log.Printf("**** Channel found @ %s ****", channel.ID)
+				channelID = channel.ID
+				break
+			}
+		}
+
+		log.Printf("**** Joining channel %s ****", channelID)
+		mp.voice, _ = s.ChannelVoiceJoin(serverID, channelID, false, false)
+	}
+}
+
+func (mp *musicPlayer) newSession(serverID string, url string, c chan *musicPlayer) {
+	if mp.Sessions[serverID] == nil {
+		go SendPCM(mp.voice, mp.pcmChannel)
+		mp.queue.Enqueue(url)
+		mp.playing = true
+		go mp.run()
+		c <-mp
+	}
+}
+
+func newMp() (mp *musicPlayer) {
+	enc, err := opus.NewEncoder(sampleRate, channels, opus.APPLICATION_VOIP)
         if err != nil {
                 log.Println("**** Error creating encoder ****")
                 log.Println(err)
         }
 
         mp = &musicPlayer {
-		session: s,
+                sessions: make(map[string]*discordgo.Session),
                 encoder: enc,
                 playing: false,
                 skip: false,
+                stop: false,
                 pcmChannel: make(chan []int16, 2),
                 queue: lane.NewQueue(),
         }
 
-
-	log.Printf("***** Finding channel : %s ... *****", target)
-	channels, _ := s.GuildChannels(sID)
-	channelID := channels[1].ID
-
-	for _, channel := range channels {
-		if channel.Name == target {
-			log.Printf("**** Channel found @ %s ****", channel.ID)
-			channelID = channel.ID
-			break
-		}
-	}
-	log.Printf("**** Joining channel %s ****", channelID)
-	mp.voice, _ = s.ChannelVoiceJoin(sID, channelID, false, false)
-
-	return mp
-}
-
-func (mp *musicPlayer) start(url string) {
-	if mp.playing {
-		mp.queue.Enqueue(url)
-		return
-	}
-
-	go SendPCM(mp.voice, mp.pcmChannel)
-	mp.queue.Enqueue(url)
-	mp.playing = true
-	go mp.run()
+	return
 }
 
 func SendPCM(v *discordgo.VoiceConnection, pcm <-chan []int16) {
@@ -159,7 +166,6 @@ func SendPCM(v *discordgo.VoiceConnection, pcm <-chan []int16) {
 	defer func() { sendpcm = false }()
 
 	opusEncoder, err := gopus.NewEncoder(48000, channels, gopus.Audio)
-	opusEncoder.SetBitrate(gopus.BitrateMaximum)
 	if err != nil {
 		fmt.Println("NewEncoder Error:", err)
 		return

@@ -14,9 +14,9 @@ const (
 )
 
 var (
-	cmd *exec.Cmd
-	faggot string
-	voiceConn *discordgo.VoiceConnection
+	cmd	*exec.Cmd
+	faggot = make(map[string]string)
+	players = make(map[string]*musicPlayer)
 )
 
 func messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -29,7 +29,6 @@ func messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// filter out any messages less than 4 characters otherwise we will get IndexOutOfRange
 	if len(m.Content) < len(prefix) {
-		log.Println("---- m.Content < 4 ----")
 		return
 	}
 
@@ -39,9 +38,6 @@ func messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// some variables delcaration to store user input
 		var method string
 		var params string
-		var mp *musicPlayer
-
-		log.Println(s.VoiceConnections)
 
 		// filtering out "miku" since it isn't needed anymore
 		content := m.Content[5:]
@@ -63,22 +59,26 @@ func messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		switch method {
 
 		case "whoisafaggot":
-			if faggot == "" {
-				faggot = getRandomUserID(serverID, s)
+			if faggot[serverID] == "" {
+				faggot[serverID] = getRandomUserID(serverID, s)
 				params = ""
 			}
-			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("%s is a faggot!", faggot))
+			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("%s is a faggot!", faggot[serverID]))
 
 		case "thisguyisafaggot":
 			if user.ID == me {
-				faggot = params
-				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Miku agrees, %s is a faggot", faggot))
+				faggot[serverID] = params
+				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Miku agrees, %s is a faggot", faggot[serverID]))
 			} else {
 				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Miku disagrees, you're the faggot <@%s>!", user.ID))
 			}
 
 		case "join":
-			joinVoiceChannel(params, serverID, s)
+			if players[serverID] == nil {
+				players[serverID] = newMusicSession(params, serverID, s)
+			} else {
+				s.ChannelMessageSend(m.ChannelID, "I am already in a voice channel!")
+			}
 
 		case "reboot":
 			if user.ID == me {
@@ -86,7 +86,7 @@ func messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 				cmd = exec.Command("reboot")
 				cmd.Run()
 			} else {
-				s.ChannelMessageSend(m.ChannelID, "Fuck off ...!")
+				s.ChannelMessageSend(m.ChannelID, "You are not my husband ...!")
 			}
 
 		case "shutdown":
@@ -95,22 +95,30 @@ func messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 				cmd = exec.Command("sudo telinit 0")
 				cmd.Run()
 			} else {
-				s.ChannelMessageSend(m.ChannelID, "Fuck off ...!")
+				s.ChannelMessageSend(m.ChannelID, "You are not my husband ...!")
 			}
 
 		case "play":
-			voiceChan := s.VoiceConnections[m.ChannelID]
-			if voiceChan != nil {
-				go initializeMp(params, voiceChan)
-				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Now playing %s", params))
+			if players[serverID] != nil {
+				go players[serverID].start(params)
+				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("**%s** added to playlist", getYoutubeTitle(params)))
 				return
 			}
 			s.ChannelMessageSend(m.ChannelID, "Put me in a channel first")
+
 		case "skip":
-			mp.skipSong()
+			if players[serverID] != nil {
+				players[serverID].skip = true
+				s.ChannelMessageSend(m.ChannelID, "Skipping song ...")
+				return
+			}
 
 		case "stop":
-			mp.stopSong()
+			if players[serverID] != nil {
+				players[serverID].playing = false
+				s.ChannelMessageSend(m.ChannelID, "Exiting ...")
+				return
+			}
 
 		case "whoisyourhusband":
 			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("<@%s is my husband <3", me))
@@ -144,6 +152,7 @@ func main() {
 		log.Println("----- Error opening Discord -----")
 		log.Println(err)
 	}
+
 	lock := make(chan int)
 	<-lock
 }

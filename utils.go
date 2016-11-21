@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os/exec"
 	"github.com/bwmarrin/discordgo"
 	"math/rand"
 	"time"
@@ -28,19 +29,8 @@ func getRandomUserID(serverID string, s *discordgo.Session) (string) {
 	return fmt.Sprintf("<@%s>", members[rand.Intn(len(members))].User.ID)
 }
 
-func joinVoiceChannel(target string, serverID string, s *discordgo.Session) (v *discordgo.VoiceConnection) {
-	log.Printf("**** Finding channel : %s ... ***", target)
-	channels, _ := s.GuildChannels(serverID)
-	channelID := channels[1].ID
-
-	for _, channel := range channels {
-		if channel.Name == target {
-			log.Printf("**** Channel found @ %s ****", channel.ID)
-			channelID = channel.ID
-			break
-		}
-	}
-	log.Printf("**** Joining channel %s ****", channelID)
-	v, _ = s.ChannelVoiceJoin(serverID, channelID, false, false)
-	return v
+func getYoutubeTitle(url interface{}) (title []byte) {
+	youtubedl := exec.Command("youtube-dl", "-e", url.(string))
+	title, _ = youtubedl.Output()
+	return
 }
