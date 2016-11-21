@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
         "log"
 	"fmt"
 	"sync"
@@ -14,7 +15,9 @@ import (
 )
 
 const (
-	maxBytes = (960 * 2) * 2
+	maxBytes = 3840 
+	channels = 2
+	sampleRate = 48000
 )
 
 type musicPlayer struct {
@@ -41,23 +44,10 @@ var (
 func (mp *musicPlayer) play(url string) {
 	mp.playing = true
 
-	video, err := http.Get(url)
-	if err != nil {
-		log.Println("**** Error getting video ****")
-		log.Println(err)
-		return
-	}
-	defer video.Body.Close()
-
-	if video.StatusCode != 200 {
-		log.Println("**** Non-200 status when getting video ****")
-		log.Println(video.StatusCode)
-		return
-	}
-
 	youtubedl = exec.Command("youtube-dl", url, "-q", "-o", "-")
 	youtubedlStdout, err := youtubedl.StdoutPipe()
 	if err != nil {
+		log.Println("***** youtube-dl stdout error *****")
 		log.Println(err)
 	}
 
@@ -65,19 +55,23 @@ func (mp *musicPlayer) play(url string) {
 	ffmpeg.Stdin = youtubedlStdout
 	ffmpegStdout, err := ffmpeg.StdoutPipe()
 	if err != nil {
+		log.Println("***** ffmpeg stdout error *****")
 		log.Println(err)
 	}
 
 	youtubedl.Start()
 	ffmpeg.Start()
 
-	audioBuffer := make([]int16, 960*2  )
+	audioBuffer := make([]int16, 1920)
 
 	mp.voice.Speaking(true)
 	defer mp.voice.Speaking(false)
 
 	for {
 		err = binary.Read(ffmpegStdout, binary.LittleEndian, &audioBuffer)
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			break
+		}
 		if err != nil {
 			log.Println("**** Error reading from stdout ****")
 			log.Println(err)
@@ -104,10 +98,11 @@ func (mp *musicPlayer) run() {
 
 			mp.play(url.(string))
 		}
-
+		log.Println("***** No more songs in queue, closing pcm channel *****")
 		close(mp.pcmChannel)
 		mp.voice.Close()
 		delete(players, mp.voice.GuildID)
+		log.Println("***** Music Player cleanup finished *****")
 	}
 }
 

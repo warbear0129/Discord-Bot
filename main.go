@@ -115,6 +115,8 @@ func messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		case "whoisyourhusband":
 			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("<@%s is my husband <3", me))
 
+		case "doyoulovemax":
+			s.ChannelMessageSend(m.ChannelID, "Yes! <3")
 		default:
 			return
 		}
