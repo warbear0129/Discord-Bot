@@ -9,20 +9,13 @@ import (
         "os/exec"
         "gopkg.in/oleiade/lane.v1"
         "github.com/bwmarrin/discordgo"
-	"github.com/hraban/opus"
 	"github.com/layeh/gopus"
-)
-
-const (
-	maxBytes = 3840
-	channels = 2
-	sampleRate = 48000
 )
 
 type musicPlayer struct {
 	voice		*discordgo.VoiceConnection
 	session		*discordgo.Session
-        encoder         *opus.Encoder
+        encoder         *gopus.Encoder
         queue           *lane.Queue
 	pcmChannel	chan []int16
         playing         bool
@@ -67,9 +60,6 @@ func (mp *musicPlayer) play(url string) {
 
 	for {
 		err = binary.Read(ffmpegStdout, binary.LittleEndian, &audioBuffer)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			break
-		}
 		if err != nil {
 			log.Println("**** Error reading from stdout ****")
 			log.Println(err)
@@ -90,20 +80,14 @@ func (mp *musicPlayer) run() {
 		if url == nil {
 			break
 		}
-		mp.session.ChannelMessageSend(mp.voice.GuildID, fmt.Sprintf("Now playing - **%s**", getYoutubeTitle(url)))
+		mp.sendMessage(fmt.Sprintf("Now playing - **%s**", getYoutubeTitle(url)))
 		mp.play(url.(string))
 	}
-
-	log.Println("***** No more songs in queue, closing pcm channel *****")
-	close(mp.pcmChannel)
-	mp.voice.Close()
-	mp.voice.Disconnect()
-	delete(players, mp.voice.GuildID)
-	log.Println("***** Music Player cleanup finished *****")
+	mp.exit()
 }
 
 func newMusicSession(target string, sID string, s *discordgo.Session) (mp *musicPlayer) {
-        enc, err := opus.NewEncoder(sampleRate, channels, opus.APPLICATION_VOIP)
+        enc, err := gopus.NewEncoder(sampleRate, channels, gopus.Audio)
         if err != nil {
                 log.Println("**** Error creating encoder ****")
                 log.Println(err)
@@ -137,8 +121,13 @@ func newMusicSession(target string, sID string, s *discordgo.Session) (mp *music
 }
 
 func (mp *musicPlayer) start(url string) {
+	if url == "" {
+		return
+	}
+
 	if mp.playing {
 		mp.queue.Enqueue(url)
+		mp.sendMessage(fmt.Sprintf("Added to queue - **%s**", getYoutubeTitle(url)))
 		return
 	}
 
@@ -148,43 +137,21 @@ func (mp *musicPlayer) start(url string) {
 	go mp.run()
 }
 
-func SendPCM(v *discordgo.VoiceConnection, pcm <-chan []int16) {
-	mu.Lock()
-	if sendpcm || pcm == nil {
-		mu.Unlock()
-		return
+func (mp *musicPlayer) stop() {
+	if mp.playing {
+		mp.playing = false
+	} else {
+		mp.exit()
 	}
-	sendpcm = true
-	mu.Unlock()
-	defer func() { sendpcm = false }()
+}
 
-	opusEncoder, err := gopus.NewEncoder(48000, channels, gopus.Audio)
-	opusEncoder.SetBitrate(gopus.BitrateMaximum)
-	if err != nil {
-		fmt.Println("NewEncoder Error:", err)
-		return
-	}
+func (mp *musicPlayer) exit() {
+        close(mp.pcmChannel)
+        mp.voice.Close()
+        mp.voice.Disconnect()
+        delete(players, mp.voice.GuildID)
+}
 
-	for {
-		// read pcm from chan, exit if channel is closed.
-		recv, ok := <-pcm
-		if !ok {
-			fmt.Println("PCM Channel closed.")
-			return
-		}
-
-		// try encoding pcm frame with Opus
-		opus, err := opusEncoder.Encode(recv, 960, maxBytes)
-		if err != nil {
-			fmt.Println("Encoding Error:", err)
-			return
-		}
-
-		if v.Ready == false || v.OpusSend == nil {
-			// fmt.Printf("Discordgo not ready for opus packets. %+v : %+v", v.Ready, v.OpusSend)
-			return
-		}
-		// send encoded opus data to the sendOpus channel
-		v.OpusSend <- opus
-	}
+func (mp *musicPlayer) sendMessage(msg string) {
+	mp.session.ChannelMessageSend(mp.voice.GuildID, msg)
 }

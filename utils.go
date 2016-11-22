@@ -6,20 +6,37 @@ import (
 	"math/rand"
 	"time"
 	"fmt"
-	"log"
+	"strings"
 )
 
+func getServerID(s *discordgo.Session, m *discordgo.Message) (string) {
+	channel, _ := s.Channel(m.ChannelID)
+	return channel.GuildID
+}
+
+func getParams(m *discordgo.Message) (string) {
+	content := strings.Split(m.Content, " ")
+
+	if len(content) < 3 {
+		return ""
+	}
+
+	return content[2]
+}
+
+func getMethod(m *discordgo.Message) (method string) {
+	return strings.Split(m.Content, " ")[1]
+}
+
 func getUserID(target string, serverID string, s *discordgo.Session) (string) {
-	log.Printf("**** Finding : %s ... ****", target)
 	members, _ := s.GuildMembers(serverID, 0, 100)
 
 	for _, member := range members {
 		if member.User.Username == target {
-			log.Printf("**** Found user @ %s ****", member.User.ID)
 			return fmt.Sprintf("<@%s>", member.User.ID)
 		}
 	}
-	log.Printf("**** Member not found ****")
+
 	return ""
 }
 
