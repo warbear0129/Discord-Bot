@@ -3,8 +3,8 @@ package main
 import (
 	"github.com/bwmarrin/discordgo"
 	"log"
-	"flag"
 	"os"
+	"flag"
 	"bufio"
 )
 
@@ -13,7 +13,7 @@ const (
 )
 
 var (
-	token	string
+	token = flag.String("token", "", "Discord Bot Token")
 	r	*router
 )
 
@@ -37,18 +37,20 @@ func messageCreateHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	r.getRoute(s, m.Message)
 }
 
-func main() {
-	// parse token flag
-	tokenPtr := flag.String("token", "", "Discord Bot Token")
+func init() {
 	flag.Parse()
-	token = *tokenPtr
+	if *token == "" {
+		log.Println("Please enter a Discord Bot Token")
+		os.Exit(0)
+	}
+}
 
-	log.Printf("----- Logging in with token : %s", token)
-	discord, err := discordgo.New(token)
+func main() {
+	discord, err := discordgo.New("")
 	if err != nil {
 		log.Println("----- Error logging in -----")
 		log.Println(err)
-		os.Exit(0)
+		return
 	}
 	log.Println("----- Login successful -----")
 
@@ -56,9 +58,10 @@ func main() {
 	if err != nil {
 		log.Println("----- Error opening Discord -----")
 		log.Println(err)
-		os.Exit(0)
+		return
 	}
 	log.Println("----- Discord session started -----")
+	log.Println(discord)
 	discord.AddHandler(messageCreateHandler)
 
 	r = newRouter()
