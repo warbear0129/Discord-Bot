@@ -1,8 +1,6 @@
 package main
 
 import (
-	"github.com/bwmarrin/discordgo"
-	"github.com/layeh/gopus"
 	"log"
 )
 
@@ -13,7 +11,7 @@ const (
 	sampleRate = 48000
 )
 
-func SendPCM(v *discordgo.VoiceConnection, pcm <-chan []int16) {
+func SendPCM(mp *musicPlayer, pcm <-chan []int16) {
         mu.Lock()
         if sendpcm || pcm == nil {
                 mu.Unlock()
@@ -23,12 +21,8 @@ func SendPCM(v *discordgo.VoiceConnection, pcm <-chan []int16) {
         mu.Unlock()
         defer func() { sendpcm = false }()
 
-        opusEncoder, err := gopus.NewEncoder(sampleRate, channels, gopus.Audio)
-        opusEncoder.SetBitrate(gopus.BitrateMaximum)
-        if err != nil {
-                log.Println("NewEncoder Error:", err)
-                return
-        }
+	v := mp.voice
+	enc := mp.encoder
 
         for {
                 // read pcm from chan, exit if channel is closed.
@@ -39,7 +33,7 @@ func SendPCM(v *discordgo.VoiceConnection, pcm <-chan []int16) {
                 }
 
                 // try encoding pcm frame with Opus
-                opus, err := opusEncoder.Encode(recv, 960, maxBytes)
+                opus, err := enc.Encode(recv, 960, maxBytes)
                 if err != nil {
                         log.Println("Encoding Error:", err)
                         return

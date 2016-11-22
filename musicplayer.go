@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
         "encoding/binary"
+	"strings"
         "os/exec"
         "gopkg.in/oleiade/lane.v1"
         "github.com/bwmarrin/discordgo"
@@ -29,11 +30,7 @@ var (
 	mu		sync.Mutex
 )
 
-
-
 func (mp *musicPlayer) play(url string) {
-	mp.playing = true
-
 	youtubedl = exec.Command("youtube-dl", url, "-q", "-o", "-")
 	youtubedlStdout, err := youtubedl.StdoutPipe()
 	if err != nil {
@@ -41,7 +38,7 @@ func (mp *musicPlayer) play(url string) {
 		log.Println(err)
 	}
 
-	ffmpeg = exec.Command("ffmpeg", "-i", "-", "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1")
+	ffmpeg = exec.Command("ffmpeg", "-i", "-", "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1", "-af", "0.5")
 	ffmpeg.Stdin = youtubedlStdout
 	ffmpegStdout, err := ffmpeg.StdoutPipe()
 	if err != nil {
@@ -73,6 +70,7 @@ func (mp *musicPlayer) play(url string) {
 }
 
 func (mp *musicPlayer) run() {
+	mp.playing = true
 	for mp.playing {
 		mp.skip = false
 		url := mp.queue.Dequeue()
@@ -91,6 +89,7 @@ func newMusicSession(target string, sID string, s *discordgo.Session) (mp *music
                 log.Println("**** Error creating encoder ****")
                 log.Println(err)
         }
+	enc.SetBitrate(gopus.BitrateMaximum)
 
         mp = &musicPlayer {
 		session: s,
@@ -115,12 +114,15 @@ func newMusicSession(target string, sID string, s *discordgo.Session) (mp *music
 	}
 	log.Printf("**** Joining channel %s ****", channelID)
 	mp.voice, _ = s.ChannelVoiceJoin(sID, channelID, false, false)
-
 	return mp
 }
 
 func (mp *musicPlayer) start(url string) {
 	if url == "" {
+		return
+	}
+
+	if !strings.Contains(url, "https://www.youtube.com/") {
 		return
 	}
 
@@ -130,9 +132,8 @@ func (mp *musicPlayer) start(url string) {
 		return
 	}
 
-	go SendPCM(mp.voice, mp.pcmChannel)
+	go SendPCM(mp, mp.pcmChannel)
 	mp.queue.Enqueue(url)
-	mp.playing = true
 	go mp.run()
 }
 

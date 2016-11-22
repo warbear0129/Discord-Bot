@@ -24,7 +24,7 @@ func messageCreateHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	// filter out any messages less than 4 characters otherwise we will get IndexOutOfRange
-	if len(m.Content) < len(prefix) {
+	if len(m.Content) <= len(prefix) {
 		return
 	}
 
@@ -42,6 +42,11 @@ func main() {
 	tokenPtr := flag.String("token", "", "Discord Bot Token")
 	flag.Parse()
 	token = *tokenPtr
+
+	if token == "" {
+		log.Println("***** No token entered, use the -token flag *****")
+		os.Exit(0)
+	}
 
 	log.Printf("----- Logging in with token : %s", token)
 	discord, err := discordgo.New(token)
@@ -61,6 +66,9 @@ func main() {
 	log.Println("----- Discord session started -----")
 	discord.AddHandler(messageCreateHandler)
 
+	log.Println("----- Setting status -----")
+	discord.UpdateStreamingStatus(0, "Thinking about Max ...", "https://www.facebook.com/JubuJahat")
+
 	r = newRouter()
 	go r.addRoute("thisguyisafaggot", thisguyisafaggot)
 	go r.addRoute("whoisafaggot", whoisafaggot)
@@ -68,12 +76,15 @@ func main() {
 	go r.addRoute("sing", sing)
 	go r.addRoute("skip", skip)
 	go r.addRoute("stop", stop)
+	go r.addRoute("ping", ping)
+	go r.addRoute("run", run)
+	go r.addRoute("status", status)
+	go r.addRoute("restart", restart)
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		discord.ChannelMessageSend(hupsoonheng, scanner.Text())
 	}
 
-	lock := make(chan int)
-	<-lock
+	for {}
 }

@@ -24,6 +24,16 @@ func getParams(m *discordgo.Message) (string) {
 	return content[2]
 }
 
+func getParamsAll(m *discordgo.Message) (string, []string) {
+	content := strings.Split(m.Content, " ")
+
+	if len(content) < 3 {
+		return "", nil
+	}
+
+	return content[2], content[3:]
+}
+
 func getMethod(m *discordgo.Message) (method string) {
 	return strings.Split(m.Content, " ")[1]
 }

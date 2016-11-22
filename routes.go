@@ -2,7 +2,10 @@ package main
 
 import (
 	"github.com/bwmarrin/discordgo"
+	"os"
 	"fmt"
+	"log"
+	"os/exec"
 )
 
 const (
@@ -53,12 +56,13 @@ func join(s *discordgo.Session, m *discordgo.Message) {
 
 func sing(s *discordgo.Session, m *discordgo.Message) {
 	serverID := getServerID(s, m)
-
 	params  := getParams(m)
 
-	if players[serverID] != nil {
-		go players[serverID].start(params)
+	if players[serverID] == nil {
+		players[serverID] = newMusicSession("", serverID, s)
 	}
+
+	go players[serverID].start(params)
 }
 
 func skip(s *discordgo.Session, m *discordgo.Message) {
@@ -75,4 +79,67 @@ func stop(s *discordgo.Session, m *discordgo.Message) {
 	if players[serverID] != nil {
 		players[serverID].stop()
 	}
+}
+
+func ping(s *discordgo.Session, m *discordgo.Message) {
+	params := getParams(m)
+
+	if params == "" {
+		params = "discord.gg"
+	}
+
+	ping := exec.Command("ping", "-c", "4", params)
+	stdout, err := ping.Output()
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("```%s```", stdout))
+}
+
+func status(s *discordgo.Session, m *discordgo.Message) {
+	params := getParams(m)
+
+	if params == "" {
+		return
+	}
+
+	systemctl := exec.Command(fmt.Sprintf("/etc/init.d/%s", params), "status")
+	stdout, err := systemctl.Output()
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("```%s```", err))
+		return
+	}
+
+	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("```%s```", stdout))
+}
+
+func run(s *discordgo.Session, m *discordgo.Message) {
+	if m.Author.ID != me {
+		s.ChannelMessageSend(m.ChannelID, "I only listen to my husband ;)")
+		return
+	}
+
+	cmd, params := getParamsAll(m)
+
+	if cmd == "" {
+		return
+	}
+
+	run := exec.Command(cmd, params...)
+	stdout, err := run.Output()
+        if err != nil {
+                s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("```%s```", err))
+                return
+        }
+        s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("```%s```", stdout))
+}
+
+func restart(s *discordgo.Session, m *discordgo.Message) {
+	if m.Author.ID != me {
+		return
+	}
+
+	exec.Command("cd", "/home/go", "&&", "go", "run", "*.go").Start()
+	defer os.Exit(0)
 }
