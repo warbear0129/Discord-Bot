@@ -2,15 +2,9 @@ package main
 
 import (
 	"github.com/bwmarrin/discordgo"
-	"os"
 	"fmt"
 	"log"
 	"os/exec"
-)
-
-const (
-	me = "152424821924298752"
-	hupsoonheng = "180240931893673987"
 )
 
 var (
@@ -37,7 +31,7 @@ func thisguyisafaggot(s *discordgo.Session, m *discordgo.Message) {
 		return
 	}
 
-	if m.Author.ID == me {
+	if m.Author.ID == myID {
 		faggot[serverID] = params
 		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Miku agrees, %s is a faggot", faggot[serverID]))
 	} else {
@@ -97,25 +91,8 @@ func ping(s *discordgo.Session, m *discordgo.Message) {
 	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("```%s```", stdout))
 }
 
-func status(s *discordgo.Session, m *discordgo.Message) {
-	params := getParams(m)
-
-	if params == "" {
-		return
-	}
-
-	systemctl := exec.Command(fmt.Sprintf("/etc/init.d/%s", params), "status")
-	stdout, err := systemctl.Output()
-	if err != nil {
-		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("```%s```", err))
-		return
-	}
-
-	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("```%s```", stdout))
-}
-
 func run(s *discordgo.Session, m *discordgo.Message) {
-	if m.Author.ID != me {
+	if m.Author.ID != myID {
 		s.ChannelMessageSend(m.ChannelID, "I only listen to my husband ;)")
 		return
 	}
@@ -133,13 +110,4 @@ func run(s *discordgo.Session, m *discordgo.Message) {
                 return
         }
         s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("```%s```", stdout))
-}
-
-func restart(s *discordgo.Session, m *discordgo.Message) {
-	if m.Author.ID != me {
-		return
-	}
-
-	exec.Command("cd", "/home/go", "&&", "go", "run", "*.go").Start()
-	defer os.Exit(0)
 }

@@ -3,9 +3,9 @@ package main
 import (
         "log"
 	"fmt"
-	"sync"
         "encoding/binary"
 	"strings"
+	"sync"
         "os/exec"
         "gopkg.in/oleiade/lane.v1"
         "github.com/bwmarrin/discordgo"
@@ -20,77 +20,81 @@ type musicPlayer struct {
 	pcmChannel	chan []int16
         playing         bool
         skip            bool
+	sendpcm         bool
+        recv            chan *discordgo.Packet
+	volume		float32
+	ffmpeg          *exec.Cmd
+        youtubedl       *exec.Cmd
+	mutex		sync.Mutex
+	buffer		[]int16
 }
 
 var (
-	ffmpeg		*exec.Cmd
-	youtubedl	*exec.Cmd
-	sendpcm		bool
-	recv		chan *discordgo.Packet
-	mu		sync.Mutex
+	enc, _ = gopus.NewEncoder(sampleRate, channels, gopus.Audio)
+
 )
 
 func (mp *musicPlayer) play(url string) {
-	youtubedl = exec.Command("youtube-dl", url, "-q", "-o", "-")
-	youtubedlStdout, err := youtubedl.StdoutPipe()
+	mp.sendMessage(fmt.Sprintf("Now playing - **%s**", getYoutubeTitle(url)))
+
+	// start youtube-dl to "download" the audio
+	mp.youtubedl = exec.Command("youtube-dl", url, "-q", "-o", "-")
+	youtubedlStdout, err := mp.youtubedl.StdoutPipe()
 	if err != nil {
 		log.Println("***** youtube-dl stdout error *****")
 		log.Println(err)
 	}
 
-	ffmpeg = exec.Command("ffmpeg", "-i", "-", "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1", "-af", "0.5")
-	ffmpeg.Stdin = youtubedlStdout
-	ffmpegStdout, err := ffmpeg.StdoutPipe()
+	// ffmpeg to pass the audio from youtube-dl to Discord
+	mp.ffmpeg = exec.Command("ffmpeg", "-i", "-", "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1")
+	mp.ffmpeg.Stdin = youtubedlStdout
+
+	ffmpegStdout, err := mp.ffmpeg.StdoutPipe()
 	if err != nil {
-		log.Println("***** ffmpeg stdout error *****")
-		log.Println(err)
+		log.Printf("***** ffmpeg stdout error: %s *****", err)
 	}
 
-	youtubedl.Start()
-	ffmpeg.Start()
-
-	audioBuffer := make([]int16, 1920)
+	mp.youtubedl.Start()
+	mp.ffmpeg.Start()
 
 	mp.voice.Speaking(true)
-	defer mp.voice.Speaking(false)
 
 	for {
-		err = binary.Read(ffmpegStdout, binary.LittleEndian, &audioBuffer)
+		err = binary.Read(ffmpegStdout, binary.LittleEndian, mp.buffer)
 		if err != nil {
-			log.Println("**** Error reading from stdout ****")
-			log.Println(err)
+			log.Printf("**** Error reading from stdout: %s ****", err)
 			break
 		}
 
 		if mp.playing == false || mp.skip == true {
 			break
 		}
-		mp.pcmChannel <- audioBuffer
+
+		mp.pcmChannel <- mp.buffer
 	}
+
+	mp.voice.Speaking(false)
 }
 
 func (mp *musicPlayer) run() {
 	mp.playing = true
+
 	for mp.playing {
 		mp.skip = false
+
 		url := mp.queue.Dequeue()
 		if url == nil {
 			break
 		}
-		mp.sendMessage(fmt.Sprintf("Now playing - **%s**", getYoutubeTitle(url)))
+
 		mp.play(url.(string))
 	}
-	mp.exit()
+
+	mp.playing = false
+	mp.stop()
 }
 
-func newMusicSession(target string, sID string, s *discordgo.Session) (mp *musicPlayer) {
-        enc, err := gopus.NewEncoder(sampleRate, channels, gopus.Audio)
-        if err != nil {
-                log.Println("**** Error creating encoder ****")
-                log.Println(err)
-        }
-	enc.SetBitrate(gopus.BitrateMaximum)
-
+func newMusicSession(target string, serverID string, s *discordgo.Session) (mp *musicPlayer) {
         mp = &musicPlayer {
 		session: s,
                 encoder: enc,
@@ -98,11 +102,11 @@ func newMusicSession(target string, sID string, s *discordgo.Session) (mp *music
                 skip: false,
                 pcmChannel: make(chan []int16, 2),
                 queue: lane.NewQueue(),
+		buffer: make([]int16, 1920),
         }
 
-
 	log.Printf("***** Finding channel : %s ... *****", target)
-	channels, _ := s.GuildChannels(sID)
+	channels, _ := s.GuildChannels(serverID)
 	channelID := channels[1].ID
 
 	for _, channel := range channels {
@@ -112,28 +116,36 @@ func newMusicSession(target string, sID string, s *discordgo.Session) (mp *music
 			break
 		}
 	}
+
 	log.Printf("**** Joining channel %s ****", channelID)
-	mp.voice, _ = s.ChannelVoiceJoin(sID, channelID, false, false)
+	mp.voice, _ = s.ChannelVoiceJoin(serverID, channelID, false, false)
+
 	return mp
 }
 
 func (mp *musicPlayer) start(url string) {
+	// if no url is entered, do not run
 	if url == "" {
 		return
 	}
 
+	// if url is not a youtube url, do not run
 	if !strings.Contains(url, "https://www.youtube.com/") {
+		mp.sendMessage("I can only play YouTube videos for now :(")
 		return
 	}
 
+	// url is valid, add it to the queue
+	mp.queue.Enqueue(url)
+
+	// don't do anything else if it is already playing
 	if mp.playing {
-		mp.queue.Enqueue(url)
 		mp.sendMessage(fmt.Sprintf("Added to queue - **%s**", getYoutubeTitle(url)))
 		return
 	}
 
+	// if it is not playing already, play the song
 	go SendPCM(mp, mp.pcmChannel)
-	mp.queue.Enqueue(url)
 	go mp.run()
 }
 
@@ -141,15 +153,11 @@ func (mp *musicPlayer) stop() {
 	if mp.playing {
 		mp.playing = false
 	} else {
-		mp.exit()
+		close(mp.pcmChannel)
+		mp.voice.Close()
+		mp.voice.Disconnect()
+		delete(players, mp.voice.GuildID)
 	}
-}
-
-func (mp *musicPlayer) exit() {
-        close(mp.pcmChannel)
-        mp.voice.Close()
-        mp.voice.Disconnect()
-        delete(players, mp.voice.GuildID)
 }
 
 func (mp *musicPlayer) sendMessage(msg string) {

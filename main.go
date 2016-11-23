@@ -9,10 +9,13 @@ import (
 )
 
 const (
-	prefix = "miku"
+	myID = "152424821924298752"		// change to your discord user ID
+	myChannel = "180240931893673987"	// change to your server's ID
+	prefix = "miku"				// change to your preferred prefix
 )
 
 var (
+	status	string
 	token	string
 	r	*router
 )
@@ -37,38 +40,45 @@ func messageCreateHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	r.getRoute(s, m.Message)
 }
 
-func main() {
-	// parse token flag
+func init() {
+	// parse flags
 	tokenPtr := flag.String("token", "", "Discord Bot Token")
+	statusPtr := flag.String("status", "War Thunder", "Discord Bot Status")
 	flag.Parse()
-	token = *tokenPtr
 
+	// exit if no token entered by user
+	token = *tokenPtr
 	if token == "" {
 		log.Println("***** No token entered, use the -token flag *****")
 		os.Exit(0)
 	}
 
+	// set status according to flag
+	status = *statusPtr
+}
+
+func main() {
 	log.Printf("----- Logging in with token : %s", token)
+
 	discord, err := discordgo.New(token)
 	if err != nil {
-		log.Println("----- Error logging in -----")
-		log.Println(err)
+		log.Printf("----- Error logging in: %s -----", err)
 		os.Exit(0)
 	}
-	log.Println("----- Login successful -----")
 
 	err = discord.Open()
 	if err != nil {
-		log.Println("----- Error opening Discord -----")
-		log.Println(err)
+		log.Printf("----- Error opening Discord: %s -----", err)
 		os.Exit(0)
 	}
-	log.Println("----- Discord session started -----")
+
+	log.Println("----- Adding handlers -----")
 	discord.AddHandler(messageCreateHandler)
 
-	log.Println("----- Setting status -----")
-	discord.UpdateStreamingStatus(0, "Thinking about Max ...", "https://www.facebook.com/JubuJahat")
+	log.Printf("----- Setting status to: %s -----", status)
+	discord.UpdateStatus(0, status)
 
+	log.Println("----- Setting up router -----")
 	r = newRouter()
 	go r.addRoute("thisguyisafaggot", thisguyisafaggot)
 	go r.addRoute("whoisafaggot", whoisafaggot)
@@ -78,13 +88,10 @@ func main() {
 	go r.addRoute("stop", stop)
 	go r.addRoute("ping", ping)
 	go r.addRoute("run", run)
-	go r.addRoute("status", status)
-	go r.addRoute("restart", restart)
 
+	log.Println("----- Starting scanner -----")
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
-		discord.ChannelMessageSend(hupsoonheng, scanner.Text())
+		discord.ChannelMessageSend(myChannel, scanner.Text())
 	}
-
-	for {}
 }
