@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/bwmarrin/discordgo"
+	"log"
 )
 
 type (
@@ -26,4 +27,7 @@ func (r *router) getRoute(s *discordgo.Session, m *discordgo.Message) {
 	if r.routes[command] != nil {
 		go r.routes[command](s, m)
 	}
+
+	log.Printf("-------------------------- %s --------------------------", m.Author.Username)
+	log.Printf("----- Command		:	%s", command)
 }

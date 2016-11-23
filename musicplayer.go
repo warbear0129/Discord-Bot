@@ -51,7 +51,7 @@ func (mp *musicPlayer) play(url string) {
 
 	ffmpegStdout, err := mp.ffmpeg.StdoutPipe()
 	if err != nil {
-		log.Printf("***** ffmpeg stdout error: %s *****", err)
+		log.Printf("----- ffmpeg stdout error	:	%s", err)
 	}
 
 	mp.youtubedl.Start()
@@ -62,7 +62,7 @@ func (mp *musicPlayer) play(url string) {
 	for {
 		err = binary.Read(ffmpegStdout, binary.LittleEndian, mp.buffer)
 		if err != nil {
-			log.Printf("**** Error reading from stdout: %s ****", err)
+			log.Printf("----- Error reading from stdout	:	%s", err)
 			break
 		}
 
@@ -105,19 +105,19 @@ func newMusicSession(target string, serverID string, s *discordgo.Session) (mp *
 		buffer: make([]int16, 1920),
         }
 
-	log.Printf("***** Finding channel : %s ... *****", target)
+	log.Printf("----- Finding channel	: 	%s", target)
 	channels, _ := s.GuildChannels(serverID)
 	channelID := channels[1].ID
 
 	for _, channel := range channels {
 		if channel.Name == target {
-			log.Printf("**** Channel found @ %s ****", channel.ID)
+			log.Printf(" Channel found	:	%s", channel.ID)
 			channelID = channel.ID
 			break
 		}
 	}
 
-	log.Printf("**** Joining channel %s ****", channelID)
+	log.Printf("----- Joining channel	:	%s", channelID)
 	mp.voice, _ = s.ChannelVoiceJoin(serverID, channelID, false, false)
 
 	return mp

@@ -8,36 +8,8 @@ import (
 )
 
 var (
-	ttsCooldown = make(map[string]int)
 	players = make(map[string]*musicPlayer)
-	faggot = make(map[string]string)
 )
-
-func whoisafaggot(s *discordgo.Session, m *discordgo.Message) {
-	serverID := getServerID(s, m)
-
-	if faggot[serverID] == "" {
-		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("%s is a faggot!", getRandomUserID(serverID, s)))
-	} else {
-		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("%s is a faggot!", faggot))
-	}
-}
-
-func thisguyisafaggot(s *discordgo.Session, m *discordgo.Message) {
-	serverID := getServerID(s, m)
-
-	params := getParams(m)
-	if params == "" {
-		return
-	}
-
-	if m.Author.ID == myID {
-		faggot[serverID] = params
-		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Miku agrees, %s is a faggot", faggot[serverID]))
-	} else {
-		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Miku disagrees, you're the faggot <@%s>!", m.Author.ID))
-	}
-}
 
 func join(s *discordgo.Session, m *discordgo.Message) {
 	serverID := getServerID(s, m)
@@ -110,4 +82,16 @@ func run(s *discordgo.Session, m *discordgo.Message) {
                 return
         }
         s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("```%s```", stdout))
+}
+
+func help(s *discordgo.Session, m *discordgo.Message) {
+	msg :=  "Hello! I am Hatsune Miku and I am made by Max ;)\n"+
+		"Here are the commands I have:\n\n" +
+		"`help .............................. Show this help message`\n" +
+		"`join <voice-channel> .............. Join a voice channel`\n" +
+		"`play <youtube-url> ................ Add a song from YouTube to playlist`\n" +
+		"`skip .............................. Skip a song in the playlist`\n" +
+		"`stop .............................. Stop the entire playlist`\n" +
+		"`ping .............................. Test the ping to your server ;)`\n"
+	s.ChannelMessageSend(m.ChannelID,msg)
 }
