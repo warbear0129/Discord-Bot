@@ -1,60 +1,42 @@
 package main
 
 import (
-	"github.com/bwmarrin/discordgo"
 	"log"
-	"flag"
 	"os"
 	"os/signal"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 const (
-	myID = "152424821924298752"		// change to your discord user ID
-	myChannel = "180240931893673987"	// change to your server's ID
-	prefix = "miku"				// change to your preferred prefix
+	myID      = "152424821924298752"                                              // change to your discord user ID
+	myChannel = "280009528966250498"                                              // change to your server's ID
+	prefix    = "miku"                                                            // change to your preferred prefix
+	token     = "Bot MzIwMTI3NzM0NTEwNzgwNDE5.DFYb3A.Xhcb3oWrcfxSk3N8Pq1XRzU1tMY" // replace with your bot's token
 )
 
 var (
-	status	string
-	token	string
-	r	*router
+	r = newRouter()
 )
 
 func messageCreateHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// if user is a bot, ignore his message
+	// if user is a bot, ignore its message
 	if m.Author.Bot {
 		return
 	}
 
-	// filter out any messages less than 4 characters otherwise we will get IndexOutOfRange
+	// ignore any messages less than the length of our prefix
 	if len(m.Content) <= len(prefix) {
 		return
 	}
 
-	// process any message starting with "miku"
+	// ignore any messages that does not start with our prefix
 	if m.Content[:4] != prefix {
 		return
 	}
 
-	// call the corresponding method
+	// call the corresponding route
 	r.getRoute(s, m.Message)
-}
-
-func init() {
-	// parse flags
-	tokenPtr := flag.String("token", "", "Discord Bot Token")
-	statusPtr := flag.String("status", "War Thunder", "Discord Bot Status")
-	flag.Parse()
-
-	// exit if no token entered by user
-	token = *tokenPtr
-	if token == "" {
-		log.Println("***** No token entered, use the -token flag *****")
-		os.Exit(0)
-	}
-
-	// set status according to flag
-	status = *statusPtr
 }
 
 func main() {
@@ -72,20 +54,10 @@ func main() {
 		os.Exit(0)
 	}
 
-	log.Println("----- Adding handlers")
 	discord.AddHandler(messageCreateHandler)
 
-	log.Printf("----- Setting status to: %s", status)
-	discord.UpdateStatus(0, status)
-
-	log.Println("----- Setting up router")
 	r = newRouter()
-	go r.addRoute("thisguyisafaggot", thisguyisafaggot)
-	go r.addRoute("whoisafaggot", whoisafaggot)
-	go r.addRoute("join", join)
-	go r.addRoute("play", play)
-	go r.addRoute("skip", skip)
-	go r.addRoute("stop", stop)
+
 	go r.addRoute("ping", ping)
 	go r.addRoute("run", run)
 	go r.addRoute("help", help)
@@ -94,12 +66,12 @@ func main() {
 	done := make(chan bool)
 
 	signal.Notify(c, os.Interrupt)
-	go func(){
+	go func() {
 		for _ = range c {
 			log.Println("--- Handling CTRL-C ")
 			discord.Logout()
 			discord.Close()
-			done <-true
+			done <- true
 		}
 	}()
 	<-done

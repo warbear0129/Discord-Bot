@@ -11,8 +11,8 @@ type (
 	}
 )
 
-func newRouter() (*router) {
-	return &router {
+func newRouter() *router {
+	return &router{
 		routes: make(map[string]method),
 	}
 }
